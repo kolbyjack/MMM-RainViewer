@@ -26,8 +26,8 @@ Module.register("MMM-RainViewer", {
 
     self.map = null;
     self.timestamps = [];
-    self.radarLayers = [];
-    self.currentRadarFrame = -1;
+    self.radarLayers = {};
+    self.currentTimestamp = null;
     self.nextRadarFrame = -1;
     self.animationTimer = null;
   },
@@ -46,19 +46,10 @@ Module.register("MMM-RainViewer", {
     var rainViewerLoader = new XMLHttpRequest();
     rainViewerLoader.open("GET", "https://tilecache.rainviewer.com/api/maps.json", true);
     rainViewerLoader.onload = e => {
-      for (var ts of JSON.parse(rainViewerLoader.response).slice(-self.config.maxFrames)) {
+      const newTimestamps = JSON.parse(rainViewerLoader.response).slice(-self.config.maxFrames);
+      for (var ts of newTimestamps) {
         if (!self.timestamps.includes(ts)) {
           self.timestamps.push(ts);
-        }
-      }
-
-      for (var ts of self.timestamps.slice(0, -self.config.maxFrames)) {
-        if (self.radarLayers[ts]) {
-          if (self.map.hasLayer(self.radarLayers[ts])) {
-            self.map.removeLayer(self.radarLayers[ts]);
-          }
-
-          self.radarLayers = self.radarLayers.filter(item => item !== ts);
         }
       }
 
@@ -103,11 +94,11 @@ Module.register("MMM-RainViewer", {
   addLayer: function(ts) {
     var self = this;
 
-    if (!self.radarLayers[ts]) {
+    if (!(ts in self.radarLayers)) {
       const url = `https://tilecache.rainviewer.com/v2/radar/${ts}/256/{z}/{x}/{y}/2/1_1.png`;
       self.radarLayers[ts] = L.tileLayer(url, {
         tileSize: 256,
-        opacity: 0.001,
+        opacity: 0,
         zIndex: ts,
       });
     }
@@ -120,24 +111,43 @@ Module.register("MMM-RainViewer", {
   advanceRadarFrame: function() {
     var self = this;
 
-    self.nextRadarFrame = (self.nextRadarFrame + 1) % (self.timestamps.length + 4);
-    if (self.nextRadarFrame < self.timestamps.length && self.nextRadarFrame !== self.currentRadarFrame) {
-      const currentTimestamp = self.timestamps[self.currentRadarFrame];
-      const nextTimestamp = self.timestamps[self.nextRadarFrame];
-      const preloadFrame = self.nextRadarFrame + 1;
-
-      self.addLayer(nextTimestamp);
-      self.radarLayers[nextTimestamp].setOpacity(1);
-
-      if (self.radarLayers[currentTimestamp]) {
-        self.radarLayers[currentTimestamp].setOpacity(0);
-      }
-
-      if (preloadFrame < self.timestamps.length) {
-        self.addLayer(self.timestamps[preloadFrame]);
-      }
-
-      self.currentRadarFrame = self.nextRadarFrame;
+    if (self.timestamps.length === 0) {
+      return;
     }
+
+    self.nextRadarFrame = (self.nextRadarFrame + 1) % (self.timestamps.length + 4);
+    if (self.nextRadarFrame >= self.timestamps.length) {
+      if (self.timestamps.length > self.config.maxFrames) {
+        const oldTimestamps = self.timestamps.splice(0, self.timestamps.length - self.config.maxFrames);
+
+        for (var ts of oldTimestamps) {
+          const layer = self.radarLayers[ts];
+          delete self.radarLayers[ts];
+
+          if (layer && self.map.hasLayer(layer)) {
+            self.map.removeLayer(layer);
+          }
+        }
+      }
+
+      return;
+    }
+
+    const nextTimestamp = self.timestamps[self.nextRadarFrame];
+    if (nextTimestamp === self.currentTimestamp) {
+      return;
+    }
+
+    self.addLayer(nextTimestamp);
+    self.radarLayers[nextTimestamp].setOpacity(1);
+
+    if (self.radarLayers[self.currentTimestamp]) {
+      self.radarLayers[self.currentTimestamp].setOpacity(0);
+    }
+
+    const preloadFrame = (self.nextRadarFrame + 1) % self.timestamps.length;
+    self.addLayer(self.timestamps[preloadFrame]);
+
+    self.currentTimestamp = nextTimestamp;
   },
 });
