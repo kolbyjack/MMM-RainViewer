@@ -8,7 +8,7 @@ Module.register("MMM-RainViewer", {
     zoom: 6,
     width: 300,
     height: 300,
-    updateInterval: 5 * 60 * 1000,
+    updateInterval: 10 * 60 * 1000,
     maxFrames: 10,
     filter: "brightness(0.5)",
   },
