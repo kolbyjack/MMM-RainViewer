@@ -73,7 +73,7 @@ Module.register("MMM-RainViewer", {
 
       self.baseLayer = L.geoJSON([], {
         pane: "tilePane",
-        color: "#303030",
+        color: "#c0c0c0",
         weight: 1,
       }).addTo(self.map);
 
