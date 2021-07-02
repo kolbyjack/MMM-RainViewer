@@ -1,0 +1,9 @@
+.MMM-RainViewer .wrapper {
+  background-color: #0000;
+  width: 300px;
+  height: 275px;
+}
+
+.MMM-RainViewer .leaflet-control-container {
+  visibility: hidden;
+}
