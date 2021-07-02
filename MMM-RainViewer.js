@@ -78,7 +78,7 @@ Module.register("MMM-RainViewer", {
       }).addTo(self.map);
 
       var baseLayerLoader = new XMLHttpRequest();
-      baseLayerLoader.open("GET", self.file("gz_2010_us_050_00_500k.json"), true);
+      baseLayerLoader.open("GET", self.file("gz_2010_us_050_00_20m.min.json"), true);
       baseLayerLoader.onload = e => {
         self.baseLayer.addData(JSON.parse(baseLayerLoader.response));
       };
