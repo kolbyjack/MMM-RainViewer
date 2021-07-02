@@ -6,6 +6,7 @@ Module.register("MMM-RainViewer", {
     longitude: -81.0912,
     latitude: 32.0809,
     zoom: 6,
+    scheme: 2,
     width: 300,
     height: 300,
     updateInterval: 10 * 60 * 1000,
@@ -95,7 +96,7 @@ Module.register("MMM-RainViewer", {
     var self = this;
 
     if (!(ts in self.radarLayers)) {
-      const url = `https://tilecache.rainviewer.com/v2/radar/${ts}/256/{z}/{x}/{y}/2/1_1.png`;
+      const url = `https://tilecache.rainviewer.com/v2/radar/${ts}/256/{z}/{x}/{y}/${self.config.scheme}/1_1.png`;
       self.radarLayers[ts] = L.tileLayer(url, {
         tileSize: 256,
         opacity: 0,
