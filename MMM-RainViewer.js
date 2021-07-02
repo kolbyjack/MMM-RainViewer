@@ -74,6 +74,8 @@ Module.register("MMM-RainViewer", {
 
     var wrapper = document.createElement("div");
     wrapper.className = "wrapper";
+    wrapper.style.width = `${self.config.width}px`;
+    wrapper.style.height = `${self.config.height}px`;
 
     setTimeout(() => {
       self.map = L.map(wrapper).setView([self.config.latitude, self.config.longitude], self.config.zoom);
