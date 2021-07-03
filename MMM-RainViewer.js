@@ -11,7 +11,6 @@ Module.register("MMM-RainViewer", {
     height: 300,
     updateInterval: 10 * 60 * 1000,
     maxFrames: 10,
-    filter: "brightness(0.5)",
   },
 
   getScripts: function() {
