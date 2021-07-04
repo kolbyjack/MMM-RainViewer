@@ -5,3 +5,7 @@
 .MMM-RainViewer .leaflet-control-container {
   visibility: hidden;
 }
+
+.MMM-RainViewer .circle {
+  border-radius: 50%;
+}

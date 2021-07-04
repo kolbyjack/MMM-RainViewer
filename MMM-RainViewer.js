@@ -11,6 +11,7 @@ Module.register("MMM-RainViewer", {
     height: 300,
     updateInterval: 10 * 60 * 1000,
     maxFrames: 10,
+    shape: "square",
   },
 
   getScripts: function() {
@@ -65,6 +66,9 @@ Module.register("MMM-RainViewer", {
 
     var wrapper = document.createElement("div");
     wrapper.className = "wrapper";
+    if (self.config.shape === "circle") {
+      wrapper.classList.add("circle");
+    }
     wrapper.style.width = `${self.config.width}px`;
     wrapper.style.height = `${self.config.height}px`;
 

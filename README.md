@@ -47,3 +47,4 @@ The following properties can be configured:
 |`height`|`300`|Height of the map in pixels.|
 |`updateInterval`|`10 * 60 * 1000`|How often to fetch new radar data from RainViewer (do not set this any lower).|
 |`maxFrames`|`10`|Maximum frames of radar images to animate.|
+|`shape`|`square`|Shape of the widget (can be `square` or `circle`).|
