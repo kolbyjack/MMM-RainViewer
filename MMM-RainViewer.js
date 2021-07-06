@@ -12,6 +12,7 @@ Module.register("MMM-RainViewer", {
     updateInterval: 10 * 60 * 1000,
     maxFrames: 10,
     shape: "square",
+    basemap: "us-counties",
   },
 
   getScripts: function() {
@@ -82,7 +83,7 @@ Module.register("MMM-RainViewer", {
       }).addTo(self.map);
 
       var baseLayerLoader = new XMLHttpRequest();
-      baseLayerLoader.open("GET", self.file("gz_2010_us_050_00_20m.min.json"), true);
+      baseLayerLoader.open("GET", self.getBaseLayerURL(), true);
       baseLayerLoader.onload = e => {
         self.baseLayer.addData(JSON.parse(baseLayerLoader.response));
       };
@@ -153,5 +154,19 @@ Module.register("MMM-RainViewer", {
     self.addLayer(self.timestamps[preloadFrame]);
 
     self.currentTimestamp = nextTimestamp;
+  },
+
+  getBaseLayerURL: function() {
+    const self = this;
+    const basemaps = {
+      "us-states": "gz_2010_us_040_00_20m.min.json",
+      "us-counties": "gz_2010_us_050_00_20m.min.json",
+      "world": "ne_50m_admin_0_countries.min.json",
+      "world-110m": "ne_110m_admin_0_countries.min.json",
+    };
+    const usermap = self.config.basemap.toLowerCase();
+    const basemap = (usermap in basemaps) ? usermap : "world";
+
+    return self.file(basemaps[basemap], true);
   },
 });
