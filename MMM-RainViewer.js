@@ -12,7 +12,7 @@ Module.register("MMM-RainViewer", {
     updateInterval: 10 * 60 * 1000,
     maxFrames: 10,
     shape: "square",
-    basemap: "us-counties",
+    basemap: "us-states",
   },
 
   getScripts: function() {
@@ -165,7 +165,7 @@ Module.register("MMM-RainViewer", {
       "world-110m": "ne_110m_admin_0_countries.min.json",
     };
     const usermap = self.config.basemap.toLowerCase();
-    const basemap = (usermap in basemaps) ? usermap : "world";
+    const basemap = (usermap in basemaps) ? usermap : "us-states";
 
     return self.file(basemaps[basemap], true);
   },

@@ -42,7 +42,7 @@ The following properties can be configured:
 |`longitude`|`-81.0912`|Longitude of the center of the map.|
 |`latitude`|`32.0809`|Latitude of the center of the map.|
 |`zoom`|`6`|Zoom level of the map (lower zoom levels give a larger map).|
-|`basemap`|`us-counties`|Which geojson file to use for the base map.  Valid values are `us-counties`, `us-states`, `world`, and `world-110m` (low-res world map).|
+|`basemap`|`us-states`|Which geojson file to use for the base map.  Valid values are `us-counties`, `us-states`, `world`, and `world-110m` (low-res world map).|
 |`scheme`|`2`|[Color scheme](https://www.rainviewer.com/api/color-schemes.html) to use for the radar images.|
 |`width`|`300`|Width of the map in pixels.|
 |`height`|`300`|Height of the map in pixels.|
