@@ -49,3 +49,4 @@ The following properties can be configured:
 |`updateInterval`|`10 * 60 * 1000`|How often to fetch new radar data from RainViewer (do not set this any lower).|
 |`maxFrames`|`10`|Maximum frames of radar images to animate.|
 |`shape`|`square`|Shape of the widget (can be `square` or `circle`).|
+|`markers`|`[]`|Array of markers to add to the map.  Each marker can either be a `[lat, lon]` pair, or an object with two keys: `{position: [lat, lon], options: {leaflet marker options}}`|

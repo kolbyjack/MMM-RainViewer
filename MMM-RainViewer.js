@@ -13,6 +13,7 @@ Module.register("MMM-RainViewer", {
     maxFrames: 10,
     shape: "square",
     basemap: "us-states",
+    markers: [],
   },
 
   getScripts: function() {
@@ -88,6 +89,13 @@ Module.register("MMM-RainViewer", {
         self.baseLayer.addData(JSON.parse(baseLayerLoader.response));
       };
       baseLayerLoader.send();
+
+      for (var marker of self.config.markers) {
+        if (Array.isArray(marker)) {
+          marker = {position: marker};
+        }
+        L.marker(marker.position, marker.options).addTo(self.map);
+      }
 
       self.getData();
       setInterval(() => self.getData(), self.config.updateInterval);
