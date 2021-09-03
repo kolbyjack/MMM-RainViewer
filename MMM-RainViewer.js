@@ -17,7 +17,7 @@ Module.register("MMM-RainViewer", {
   },
 
   getScripts: function() {
-    return [this.file("leaflet/leaflet.js")];
+    return [this.file("leaflet/leaflet.js"), "https://unpkg.com/leaflet-kmz@latest/dist/leaflet-kmz.js"];
   },
 
   getStyles: function() {
@@ -61,6 +61,40 @@ Module.register("MMM-RainViewer", {
       }
     };
     rainViewerLoader.send();
+
+    fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent("https://www.nhc.noaa.gov/gis-at.xml")}`)
+      .then(response => response.text())
+      .then(xml => new DOMParser().parseFromString(xml, "text/xml"))
+      .then(rss => {
+        for (let k in self.nhcLayers) {
+          self.nhcLayers[k].active = false;
+        }
+
+        rss.querySelectorAll("item").forEach(item => {
+          let title = item.querySelector("title").innerHTML;
+          let link = item.querySelector("link").innerHTML;
+          let layerName = `raw?url=${encodeURIComponent(link)}`;
+
+          if (layerName in self.nhcLayers) {
+            self.nhcLayers[layerName].active = true;
+          } else if (title.startsWith("Advisory ") && link.endsWith("CONE.kmz")) {
+            self.nhcLayerGroup.load(`https://api.allorigins.win/${layerName}`);
+            self.nhcLayers[layerName] = {
+              layerId: null,
+              active: true,
+            };
+          }
+        });
+
+        Object.keys(self.nhcLayers).forEach(k => {
+          let layer = self.nhcLayers[k];
+
+          if (!layer.active) {
+            self.nhcLayerGroup.removeLayer(layer.layerId);
+            delete self.nhcLayers[k];
+          }
+        });
+      });
   },
 
   getDom: function() {
@@ -89,6 +123,12 @@ Module.register("MMM-RainViewer", {
         self.baseLayer.addData(JSON.parse(baseLayerLoader.response));
       };
       baseLayerLoader.send();
+
+      self.nhcLayers = {};
+      self.nhcLayerGroup = L.kmzLayer().addTo(self.map);
+      self.nhcLayerGroup.on("load", layer => {
+        self.nhcLayers[layer.name].layerId = self.nhcLayerGroup.getLayerId(layer.layer);
+      });
 
       for (var marker of self.config.markers) {
         if (Array.isArray(marker)) {
