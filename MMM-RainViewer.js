@@ -11,17 +11,31 @@ Module.register("MMM-RainViewer", {
     height: 300,
     updateInterval: 10 * 60 * 1000,
     maxFrames: 10,
+    showNHCForecasts: true,
     shape: "square",
     basemap: "us-states",
     markers: [],
   },
 
   getScripts: function() {
-    return [this.file("leaflet/leaflet.js"), "https://unpkg.com/leaflet-kmz@latest/dist/leaflet-kmz.js"];
+    let self = this;
+    let scripts = ["https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"];
+
+    if (self.config.showNHCForecasts) {
+      scripts.push("https://unpkg.com/shpjs@latest/dist/shp.js");
+      scripts.push("https://calvinmetcalf.github.io/leaflet.shapefile/leaflet.shpfile.js");
+    }
+
+    return scripts;
   },
 
   getStyles: function() {
-    return [this.file("MMM-RainViewer.css"), this.file("leaflet/leaflet.css")];
+    let self = this;
+
+    return [
+      self.file("MMM-RainViewer.css"),
+      "https://unpkg.com/leaflet@1.7.1/dist/leaflet.css",
+    ];
   },
 
   start: function() {
@@ -33,6 +47,7 @@ Module.register("MMM-RainViewer", {
     self.currentTimestamp = null;
     self.nextRadarFrame = -1;
     self.animationTimer = null;
+    self.wrapper = null;
   },
 
   notificationReceived: function(notification, payload, sender) {
@@ -62,43 +77,17 @@ Module.register("MMM-RainViewer", {
     };
     rainViewerLoader.send();
 
-    fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent("https://www.nhc.noaa.gov/gis-at.xml")}`)
-      .then(response => response.text())
-      .then(xml => new DOMParser().parseFromString(xml, "text/xml"))
-      .then(rss => {
-        for (let k in self.nhcLayers) {
-          self.nhcLayers[k].active = false;
-        }
-
-        rss.querySelectorAll("item").forEach(item => {
-          let title = item.querySelector("title").innerHTML;
-          let link = item.querySelector("link").innerHTML;
-          let layerName = `raw?url=${encodeURIComponent(link)}`;
-
-          if (layerName in self.nhcLayers) {
-            self.nhcLayers[layerName].active = true;
-          } else if (title.startsWith("Advisory ") && link.endsWith("CONE.kmz")) {
-            self.nhcLayerGroup.load(`https://api.allorigins.win/${layerName}`);
-            self.nhcLayers[layerName] = {
-              layerId: null,
-              active: true,
-            };
-          }
-        });
-
-        Object.keys(self.nhcLayers).forEach(k => {
-          let layer = self.nhcLayers[k];
-
-          if (!layer.active) {
-            self.nhcLayerGroup.removeLayer(layer.layerId);
-            delete self.nhcLayers[k];
-          }
-        });
-      });
+    if (self.config.showNHCForecasts) {
+      self.fetchNHCForecasts();
+    }
   },
 
   getDom: function() {
     var self = this;
+
+    if (self.wrapper !== null) {
+      return self.wrapper;
+    }
 
     var wrapper = document.createElement("div");
     wrapper.className = "wrapper";
@@ -124,11 +113,8 @@ Module.register("MMM-RainViewer", {
       };
       baseLayerLoader.send();
 
-      self.nhcLayers = {};
-      self.nhcLayerGroup = L.kmzLayer().addTo(self.map);
-      self.nhcLayerGroup.on("load", layer => {
-        self.nhcLayers[layer.name].layerId = self.nhcLayerGroup.getLayerId(layer.layer);
-      });
+      self.nhcForecastLayers = {};
+      self.nhcForecastLayerGroup = L.layerGroup().addTo(self.map);
 
       for (var marker of self.config.markers) {
         if (Array.isArray(marker)) {
@@ -141,6 +127,7 @@ Module.register("MMM-RainViewer", {
       setInterval(() => self.getData(), self.config.updateInterval);
     }, 1000);
 
+    self.wrapper = wrapper;
     return wrapper;
   },
 
@@ -216,5 +203,105 @@ Module.register("MMM-RainViewer", {
     const basemap = (usermap in basemaps) ? usermap : "us-states";
 
     return self.file(basemaps[basemap], true);
+  },
+
+  corsUrl: function(url) {
+    return `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+  },
+
+  getFeatureStyle: function(feature) {
+    let colors = {
+      "LineString": "black",
+      "Point": "black",
+      "Polygon": "red",
+    };
+    let defaultColor = "blue";
+
+    return {
+      opacity: 1,
+      fillOpacity: (feature.geometry.type === "Polygon") ? 0.3 : 1,
+      radius: 5,
+      color: colors[feature.geometry.type] || defaultColor,
+      zIndex: (feature.geometry.type === "Polygon") ? 1 : 2,
+    };
+  },
+
+  pointToLayer: function(feature, latlon) {
+    return L.circleMarker(latlon, {
+      opacity: 1,
+      fillOpacity: 0.9,
+      color: "black",
+    });
+  },
+
+  fetchNHCForecasts: function() {
+    let self = this;
+
+    fetch(self.corsUrl("https://www.nhc.noaa.gov/gis-at.xml"))
+      .then(response => response.text())
+      .then(xml => new DOMParser().parseFromString(xml, "text/xml"))
+      .then(rss => {
+        for (let k in self.nhcForecastLayers) {
+          self.nhcForecastLayers[k].active = false;
+        }
+
+        rss.querySelectorAll("item").forEach(item => {
+          let title = item.querySelector("title").innerHTML;
+          let link = item.querySelector("link").innerHTML;
+
+          if (link in self.nhcForecastLayers) {
+            self.nhcForecastLayers[link].active = true;
+          } else if (title.startsWith("Advisory ") && title.includes("Forecast [shp]")) {
+            self.nhcForecastLayers[link] = {
+              layer: null,
+              active: true,
+            };
+
+            var loader = new XMLHttpRequest();
+            loader.open("GET", self.corsUrl(link), true);
+            loader.responseType = "arraybuffer";
+            loader.onload = e => {
+              let features = [];
+              let filtering = true;
+              let layer = new L.Shapefile(loader.response, {
+                filter: (geojson) => {
+                  if (filtering) {
+                    features.push(geojson);
+                  }
+                  return !filtering;
+                },
+                style: (feature) => self.getFeatureStyle(feature),
+                pointToLayer: (feature, latlon) => { return self.pointToLayer(feature, latlon) },
+              });
+              layer.once("data:loaded", () => {
+                filtering = false;
+                features.sort((a, b) => {
+                  const weights = {
+                    "Polygon": 1,
+                    "LineString": 2,
+                    "Point": 3,
+                  };
+                  return (weights[a.geometry.type] || 4) - (weights[b.geometry.type] || 4);
+                });
+                features.forEach(feature => layer.addData(feature));
+                features = [];
+                filtering = true;
+              });
+              layer.addTo(self.map);
+              self.nhcForecastLayers[link].layer = layer;
+            };
+            loader.send();
+          }
+        });
+
+        Object.keys(self.nhcForecastLayers).forEach(k => {
+          let layer = self.nhcForecastLayers[k];
+
+          if (!layer.active) {
+            self.map.removeLayer(layer.layer);
+            delete self.nhcForecastLayers[k];
+          }
+        });
+      });
   },
 });
