@@ -11,7 +11,7 @@ Module.register("MMM-RainViewer", {
     height: 300,
     updateInterval: 10 * 60 * 1000,
     maxFrames: 10,
-    showNHCForecasts: true,
+    showNHCData: true,
     shape: "square",
     basemap: "us-states",
     markers: [],
@@ -21,7 +21,7 @@ Module.register("MMM-RainViewer", {
     let self = this;
     let scripts = ["https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"];
 
-    if (self.config.showNHCForecasts) {
+    if (self.config.showNHCData) {
       scripts.push("https://unpkg.com/shpjs@latest/dist/shp.js");
       scripts.push("https://calvinmetcalf.github.io/leaflet.shapefile/leaflet.shpfile.js");
     }
@@ -61,24 +61,23 @@ Module.register("MMM-RainViewer", {
   getData: function() {
     var self = this;
 
-    var rainViewerLoader = new XMLHttpRequest();
-    rainViewerLoader.open("GET", "https://tilecache.rainviewer.com/api/maps.json", true);
-    rainViewerLoader.onload = e => {
-      const newTimestamps = JSON.parse(rainViewerLoader.response).slice(-self.config.maxFrames);
-      for (var ts of newTimestamps) {
-        if (!self.timestamps.includes(ts)) {
-          self.timestamps.push(ts);
+    fetch("https://tilecache.rainviewer.com/api/maps.json")
+      .then(response => response.json())
+      .then(json => {
+        const newTimestamps = json.slice(-self.config.maxFrames);
+        for (var ts of newTimestamps) {
+          if (!self.timestamps.includes(ts)) {
+            self.timestamps.push(ts);
+          }
         }
-      }
 
-      if (self.animationTimer === null) {
-        self.animationTimer = setInterval(() => self.advanceRadarFrame(), 500);
-      }
-    };
-    rainViewerLoader.send();
+        if (self.animationTimer === null) {
+          self.animationTimer = setInterval(() => self.advanceRadarFrame(), 500);
+        }
+      });
 
-    if (self.config.showNHCForecasts) {
-      self.fetchNHCForecasts();
+    if (self.config.showNHCData) {
+      self.fetchNHCData();
     }
   },
 
@@ -106,15 +105,14 @@ Module.register("MMM-RainViewer", {
         weight: 1,
       }).addTo(self.map);
 
-      var baseLayerLoader = new XMLHttpRequest();
-      baseLayerLoader.open("GET", self.getBaseLayerURL(), true);
-      baseLayerLoader.onload = e => {
-        self.baseLayer.addData(JSON.parse(baseLayerLoader.response));
-      };
-      baseLayerLoader.send();
+      fetch(self.getBaseLayerURL())
+        .then(response => response.json())
+        .then(json => {
+          self.baseLayer.addData(json);
+        });
 
-      self.nhcForecastLayers = {};
-      self.nhcForecastLayerGroup = L.layerGroup().addTo(self.map);
+      self.activeStormLayers = {};
+      self.activeStormLayerGroup = L.layerGroup().addTo(self.map);
 
       for (var marker of self.config.markers) {
         if (Array.isArray(marker)) {
@@ -234,72 +232,78 @@ Module.register("MMM-RainViewer", {
     });
   },
 
-  fetchNHCForecasts: function() {
+  fetchNHCData: function() {
     let self = this;
 
     fetch(self.corsUrl("https://www.nhc.noaa.gov/gis-at.xml"))
       .then(response => response.text())
       .then(xml => new DOMParser().parseFromString(xml, "text/xml"))
       .then(rss => {
-        for (let k in self.nhcForecastLayers) {
-          self.nhcForecastLayers[k].active = false;
+        for (let k in self.activeStormLayers) {
+          self.activeStormLayers[k].active = false;
         }
 
         rss.querySelectorAll("item").forEach(item => {
           let title = item.querySelector("title").innerHTML;
           let link = item.querySelector("link").innerHTML;
 
-          if (link in self.nhcForecastLayers) {
-            self.nhcForecastLayers[link].active = true;
-          } else if (title.startsWith("Advisory ") && title.includes("Forecast [shp]")) {
-            self.nhcForecastLayers[link] = {
+          if (link in self.activeStormLayers) {
+            self.activeStormLayers[link].active = true;
+          } else if (title.startsWith("Advisory") && (title.includes("Forecast [shp]") || title.includes("Wind Field [shp]"))) {
+            self.activeStormLayers[link] = {
               layer: null,
               active: true,
             };
 
-            var loader = new XMLHttpRequest();
-            loader.open("GET", self.corsUrl(link), true);
-            loader.responseType = "arraybuffer";
-            loader.onload = e => {
-              let features = [];
-              let filtering = true;
-              let layer = new L.Shapefile(loader.response, {
-                filter: (geojson) => {
-                  if (filtering) {
-                    features.push(geojson);
-                  }
-                  return !filtering;
-                },
-                style: (feature) => self.getFeatureStyle(feature),
-                pointToLayer: (feature, latlon) => { return self.pointToLayer(feature, latlon) },
-              });
-              layer.once("data:loaded", () => {
-                filtering = false;
-                features.sort((a, b) => {
-                  const weights = {
-                    "Polygon": 1,
-                    "LineString": 2,
-                    "Point": 3,
-                  };
-                  return (weights[a.geometry.type] || 4) - (weights[b.geometry.type] || 4);
+            fetch(self.corsUrl(link))
+              .then(response => response.arrayBuffer())
+              .then(buffer => {
+                // TODO: Separate filtering functions for Forecast and Wind Field
+                let features = [];
+                let filtering = true;
+                let polygonCount = 0;
+                let layer = new L.Shapefile(buffer, {
+                  filter: (feature) => {
+                    if (filtering) {
+                      features.push(feature);
+                    }
+                    if (feature.geometry.type === "Polygon" && ++polygonCount > 1) {
+                      return false;
+                    }
+                    return !filtering;
+                  },
+                  style: (feature) => self.getFeatureStyle(feature),
+                  pointToLayer: (feature, latlon) => { return self.pointToLayer(feature, latlon) },
                 });
-                features.forEach(feature => layer.addData(feature));
-                features = [];
-                filtering = true;
+                layer.once("data:loaded", () => {
+                  features.sort((a, b) => {
+                    const weights = {
+                      "Polygon": 1,
+                      "LineString": 2,
+                      "Point": 3,
+                    };
+                    return (weights[a.geometry.type] || 4) - (weights[b.geometry.type] || 4);
+                  });
+
+                  filtering = false;
+                  polygonCount = 0;
+                  features.forEach(feature => layer.addData(feature));
+                  features = [];
+                  filtering = true;
+                  polygonCount = 0;
+                });
+                layer.addTo(self.map);
+                self.activeStormLayers[link].layer = layer;
               });
-              layer.addTo(self.map);
-              self.nhcForecastLayers[link].layer = layer;
-            };
-            loader.send();
           }
         });
 
-        Object.keys(self.nhcForecastLayers).forEach(k => {
-          let layer = self.nhcForecastLayers[k];
+        Object.keys(self.activeStormLayers).forEach(k => {
+          let layer = self.activeStormLayers[k];
 
           if (!layer.active) {
             self.map.removeLayer(layer.layer);
-            delete self.nhcForecastLayers[k];
+            delete self.activeStormLayers[k];
           }
         });
       });
