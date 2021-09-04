@@ -246,19 +246,10 @@ Module.register("MMM-RainViewer", {
 
         rss.querySelectorAll("item").forEach(item => {
           let title = item.querySelector("title").innerHTML;
-          let link = item.querySelector("link").innerHTML;
 
-          if (link in self.advisoryLayers) {
-            self.advisoryLayers[link].active = true;
-          } else if (title.startsWith("Advisory") && (title.includes("Forecast [shp]") || title.includes("Wind Field [shp]"))) {
-            self.advisoryLayers[link] = {
-              layer: null,
-              active: true,
-            };
-
-            fetch(self.corsUrl(link))
-              .then(response => response.arrayBuffer())
-              .then(buffer => self.addAdvisoryLayer(title, link, buffer));
+          if (title.startsWith("Advisory")
+              && (title.includes("Forecast [shp]") || title.includes("Wind Field [shp]"))) {
+            self.addAdvisoryLayer(title, item.querySelector("link").innerHTML);
           }
         });
 
@@ -275,46 +266,29 @@ Module.register("MMM-RainViewer", {
       self.updateOutlookLayer();
   },
 
-  addAdvisoryLayer: function(title, link, buffer) {
+  addAdvisoryLayer: function(title, link) {
     // TODO: Separate filtering functions for Forecast and Wind Field
     let self = this;
-    let features = [];
-    let filtering = true;
-    let polygonCount = 0;
-    let layer = new L.Shapefile(buffer, {
-      filter: (feature) => {
-        if (filtering) {
-          features.push(feature);
-        }
-        if (feature.geometry.type === "Polygon" && ++polygonCount > 1) {
-          return false;
-        }
-        return !filtering;
-      },
-      style: (feature) => self.getFeatureStyle(feature),
-      pointToLayer: (feature, latlon) => { return self.pointToLayer(feature, latlon) },
-    });
 
-    layer.once("data:loaded", () => {
-      features.sort((a, b) => {
-        const weights = {
-          "Polygon": 1,
-          "LineString": 2,
-          "Point": 3,
-        };
-        return (weights[a.geometry.type] || 4) - (weights[b.geometry.type] || 4);
+    if (link in self.advisoryLayers) {
+      self.advisoryLayers[link].active = true;
+      return;
+    }
+
+    self.advisoryLayers[link] = {
+      layer: null,
+      active: true,
+    };
+
+    fetch(self.corsUrl(link))
+      .then(response => response.arrayBuffer())
+      .then(buffer => {
+        let polygonCount = 0;
+        let layer = self.processShapefile(buffer, f => (f.geometry.type !== "Polygon" || ++polygonCount < 2));
+
+        layer.addTo(self.map);
+        self.advisoryLayers[link].layer = layer;
       });
-
-      filtering = false;
-      polygonCount = 0;
-      features.forEach(feature => layer.addData(feature));
-      features = [];
-      filtering = true;
-      polygonCount = 0;
-    });
-
-    layer.addTo(self.map);
-    self.advisoryLayers[link].layer = layer;
   },
 
   updateOutlookLayer: function() {
