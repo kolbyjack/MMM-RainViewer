@@ -48,6 +48,7 @@ Module.register("MMM-RainViewer", {
     self.nextRadarFrame = -1;
     self.animationTimer = null;
     self.wrapper = null;
+    self.outlookLayer = null;
   },
 
   notificationReceived: function(notification, payload, sender) {
@@ -111,8 +112,8 @@ Module.register("MMM-RainViewer", {
           self.baseLayer.addData(json);
         });
 
-      self.activeStormLayers = {};
-      self.activeStormLayerGroup = L.layerGroup().addTo(self.map);
+      self.advisoryLayers = {};
+      self.advisoryLayerGroup = L.layerGroup().addTo(self.map);
 
       for (var marker of self.config.markers) {
         if (Array.isArray(marker)) {
@@ -239,73 +240,132 @@ Module.register("MMM-RainViewer", {
       .then(response => response.text())
       .then(xml => new DOMParser().parseFromString(xml, "text/xml"))
       .then(rss => {
-        for (let k in self.activeStormLayers) {
-          self.activeStormLayers[k].active = false;
+        for (let k in self.advisoryLayers) {
+          self.advisoryLayers[k].active = false;
         }
 
         rss.querySelectorAll("item").forEach(item => {
           let title = item.querySelector("title").innerHTML;
           let link = item.querySelector("link").innerHTML;
 
-          if (link in self.activeStormLayers) {
-            self.activeStormLayers[link].active = true;
+          if (link in self.advisoryLayers) {
+            self.advisoryLayers[link].active = true;
           } else if (title.startsWith("Advisory") && (title.includes("Forecast [shp]") || title.includes("Wind Field [shp]"))) {
-            self.activeStormLayers[link] = {
+            self.advisoryLayers[link] = {
               layer: null,
               active: true,
             };
 
             fetch(self.corsUrl(link))
               .then(response => response.arrayBuffer())
-              .then(buffer => {
-                // TODO: Separate filtering functions for Forecast and Wind Field
-                let features = [];
-                let filtering = true;
-                let polygonCount = 0;
-                let layer = new L.Shapefile(buffer, {
-                  filter: (feature) => {
-                    if (filtering) {
-                      features.push(feature);
-                    }
-                    if (feature.geometry.type === "Polygon" && ++polygonCount > 1) {
-                      return false;
-                    }
-                    return !filtering;
-                  },
-                  style: (feature) => self.getFeatureStyle(feature),
-                  pointToLayer: (feature, latlon) => { return self.pointToLayer(feature, latlon) },
-                });
-                layer.once("data:loaded", () => {
-                  features.sort((a, b) => {
-                    const weights = {
-                      "Polygon": 1,
-                      "LineString": 2,
-                      "Point": 3,
-                    };
-                    return (weights[a.geometry.type] || 4) - (weights[b.geometry.type] || 4);
-                  });
-
-                  filtering = false;
-                  polygonCount = 0;
-                  features.forEach(feature => layer.addData(feature));
-                  features = [];
-                  filtering = true;
-                  polygonCount = 0;
-                });
-                layer.addTo(self.map);
-                self.activeStormLayers[link].layer = layer;
-              });
+              .then(buffer => self.addAdvisoryLayer(title, link, buffer));
           }
         });
 
-        Object.keys(self.activeStormLayers).forEach(k => {
-          let layer = self.activeStormLayers[k];
+        Object.keys(self.advisoryLayers).forEach(k => {
+          let layer = self.advisoryLayers[k];
 
           if (!layer.active) {
             self.map.removeLayer(layer.layer);
-            delete self.activeStormLayers[k];
+            delete self.advisoryLayers[k];
           }
         });
       });
+
+      self.updateOutlookLayer();
+  },
+
+  addAdvisoryLayer: function(title, link, buffer) {
+    // TODO: Separate filtering functions for Forecast and Wind Field
+    let self = this;
+    let features = [];
+    let filtering = true;
+    let polygonCount = 0;
+    let layer = new L.Shapefile(buffer, {
+      filter: (feature) => {
+        if (filtering) {
+          features.push(feature);
+        }
+        if (feature.geometry.type === "Polygon" && ++polygonCount > 1) {
+          return false;
+        }
+        return !filtering;
+      },
+      style: (feature) => self.getFeatureStyle(feature),
+      pointToLayer: (feature, latlon) => { return self.pointToLayer(feature, latlon) },
+    });
+
+    layer.once("data:loaded", () => {
+      features.sort((a, b) => {
+        const weights = {
+          "Polygon": 1,
+          "LineString": 2,
+          "Point": 3,
+        };
+        return (weights[a.geometry.type] || 4) - (weights[b.geometry.type] || 4);
+      });
+
+      filtering = false;
+      polygonCount = 0;
+      features.forEach(feature => layer.addData(feature));
+      features = [];
+      filtering = true;
+      polygonCount = 0;
+    });
+
+    layer.addTo(self.map);
+    self.advisoryLayers[link].layer = layer;
+  },
+
+  updateOutlookLayer: function() {
+    let self = this;
+
+    fetch(self.corsUrl("https://www.nhc.noaa.gov/xgtwo/gtwo_shapefiles.zip"))
+      .then(response => response.arrayBuffer())
+      .then(buffer => {
+        if (self.outlookLayer !== null) {
+          self.map.removeLayer(self.outlookLayer);
+        }
+        self.outlookLayer = self.processShapefile(buffer);
+        self.outlookLayer.addTo(self.map);
+      });
+  },
+
+  processShapefile: function(buffer, filter) {
+    let self = this;
+    let features = [];
+    let filtering = true;
+    let layer = new L.Shapefile(buffer, {
+      filter: (feature) => {
+        if (filtering) {
+          features.push(feature);
+        }
+        return !filtering;
+      },
+      style: (feature) => self.getFeatureStyle(feature),
+      pointToLayer: (feature, latlon) => { return self.pointToLayer(feature, latlon) },
+    });
+
+    layer.once("data:loaded", () => {
+      features.sort((a, b) => {
+        const weights = {
+          "Polygon": 1,
+          "LineString": 2,
+          "Point": 3,
+        };
+        return (weights[a.geometry.type] || 4) - (weights[b.geometry.type] || 4);
+      });
+
+      filtering = false;
+      features.forEach(feature => {
+        if (!filter || filter(feature)) {
+          layer.addData(feature);
+        }
+      });
+      features = [];
+      filtering = true;
+    });
+
+    return layer;
   },
 });
