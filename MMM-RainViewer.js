@@ -212,24 +212,23 @@ Module.register("MMM-RainViewer", {
     let colors = {
       "LineString": "black",
       "Point": "black",
-      "Polygon": "red",
+      "Polygon": "lightblue",
     };
     let defaultColor = "blue";
+    let color = colors[feature.geometry.type] || defaultColor;
 
-    return {
-      opacity: 1,
-      fillOpacity: (feature.geometry.type === "Polygon") ? 0.3 : 1,
-      radius: 5,
-      color: colors[feature.geometry.type] || defaultColor,
-      zIndex: (feature.geometry.type === "Polygon") ? 1 : 2,
-    };
+    if ("RISK5DAY" in feature.properties) {
+      color = (feature.properties.RISK5DAY === "Low") ? "yellow" : "red";
+    }
+
+    return { color: color };
   },
 
   pointToLayer: function(feature, latlon) {
     return L.circleMarker(latlon, {
       opacity: 1,
-      fillOpacity: 0.9,
-      color: "black",
+      fillOpacity: 1,
+      radius: 4,
     });
   },
 
@@ -267,7 +266,6 @@ Module.register("MMM-RainViewer", {
   },
 
   addAdvisoryLayer: function(title, link) {
-    // TODO: Separate filtering functions for Forecast and Wind Field
     let self = this;
 
     if (link in self.advisoryLayers) {
@@ -280,12 +278,16 @@ Module.register("MMM-RainViewer", {
       active: true,
     };
 
+    let filter = null;
+    let polygonCount = 0;
+    if (title.includes("Wind Field")) {
+      filter = f => (f.geometry.type !== "Polygon" || ++polygonCount < 2);
+    }
+
     fetch(self.corsUrl(link))
       .then(response => response.arrayBuffer())
       .then(buffer => {
-        let polygonCount = 0;
-        let layer = self.processShapefile(buffer, f => (f.geometry.type !== "Polygon" || ++polygonCount < 2));
-
+        let layer = self.processShapefile(buffer, filter);
         layer.addTo(self.map);
         self.advisoryLayers[link].layer = layer;
       });
@@ -300,7 +302,7 @@ Module.register("MMM-RainViewer", {
         if (self.outlookLayer !== null) {
           self.map.removeLayer(self.outlookLayer);
         }
-        self.outlookLayer = self.processShapefile(buffer);
+        self.outlookLayer = self.processShapefile(buffer, f => f.properties.BASIN === "Atlantic");
         self.outlookLayer.addTo(self.map);
       });
   },
@@ -308,13 +310,13 @@ Module.register("MMM-RainViewer", {
   processShapefile: function(buffer, filter) {
     let self = this;
     let features = [];
-    let filtering = true;
+    let collecting = true;
     let layer = new L.Shapefile(buffer, {
       filter: (feature) => {
-        if (filtering) {
+        if (collecting) {
           features.push(feature);
         }
-        return !filtering;
+        return !collecting;
       },
       style: (feature) => self.getFeatureStyle(feature),
       pointToLayer: (feature, latlon) => { return self.pointToLayer(feature, latlon) },
@@ -330,14 +332,13 @@ Module.register("MMM-RainViewer", {
         return (weights[a.geometry.type] || 4) - (weights[b.geometry.type] || 4);
       });
 
-      filtering = false;
+      collecting = false;
       features.forEach(feature => {
         if (!filter || filter(feature)) {
           layer.addData(feature);
         }
       });
       features = [];
-      filtering = true;
     });
 
     return layer;
