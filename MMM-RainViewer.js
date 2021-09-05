@@ -209,16 +209,24 @@ Module.register("MMM-RainViewer", {
   },
 
   getFeatureStyle: function(feature) {
-    let colors = {
+    const forecastColors = {
       "LineString": "black",
       "Point": "black",
       "Polygon": "lightblue",
     };
-    let defaultColor = "blue";
-    let color = colors[feature.geometry.type] || defaultColor;
+    const defaultForecastColor = "blue";
+    const outlookColors = {
+      "Low": "yellow",
+      "Medium": "orange",
+      "High": "red",
+    };
+    const defaultOutlookColor = "yellow";
+    let color;
 
     if ("RISK5DAY" in feature.properties) {
-      color = (feature.properties.RISK5DAY === "Low") ? "yellow" : "red";
+      color = outlookColors[feature.properties.RISK5DAY] || defaultOutlookColor;
+    } else {
+      color = forecastColors[feature.geometry.type] || defaultForecastColor;
     }
 
     return { color: color };
