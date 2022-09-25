@@ -205,7 +205,7 @@ Module.register("MMM-RainViewer", {
   },
 
   corsUrl: function(url) {
-    return `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+    return `/modules/MMM-RainViewer/proxy/${url}`;
   },
 
   getFeatureStyle: function(feature) {
