@@ -17,17 +17,9 @@ module.exports = NodeHelper.create({
 
     // https://stackoverflow.com/a/10435819
     const handler = (downstreamRequest, downstreamResponse, next) => {
-      const url = new URL(downstreamRequest.url.substring(1));
-      const options = {
-        host: url.host,
-        port: url.port,
-        protocol: url.protocol,
-        path: url.pathname,
-        method: "GET",
-      };
-
-      const module = (url.protocol === "http:") ? http : https;
-      const upstreamRequest = module.request(options, upstreamResponse => {
+      const url = downstreamRequest.url.substring(1);
+      const module = url.startsWith("http:") ? http : https;
+      const upstreamRequest = module.request(url, upstreamResponse => {
         downstreamResponse.writeHead(upstreamResponse.statusCode, upstreamResponse.headers);
         upstreamResponse.on("data", chunk => downstreamResponse.write(chunk));
         upstreamResponse.on("close", () => downstreamResponse.end());
