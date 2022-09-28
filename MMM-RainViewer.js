@@ -1,5 +1,21 @@
 // MMM-RainViewer.js
 
+function isNumeric(value) {
+  if (typeof(value) === "number") {
+    return true;
+  }
+
+  if (typeof(value) === "string") {
+    return (!isNaN(value)) && (!isNaN(parseFloat(value)));
+  }
+
+  return false;
+}
+
+function cssLength(value) {
+  return isNumeric(value) ? `${value}px` : value;
+}
+
 Module.register("MMM-RainViewer", {
   // Default module config
   defaults: {
@@ -94,8 +110,8 @@ Module.register("MMM-RainViewer", {
     if (self.config.shape === "circle") {
       wrapper.classList.add("circle");
     }
-    wrapper.style.width = `${self.config.width}px`;
-    wrapper.style.height = `${self.config.height}px`;
+    wrapper.style.width = cssLength(self.config.width);
+    wrapper.style.height = cssLength(self.config.height);
 
     setTimeout(() => {
       self.map = L.map(wrapper).setView([self.config.latitude, self.config.longitude], self.config.zoom);
